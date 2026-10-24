@@ -1,0 +1,138 @@
+name: Repair LoopFollow App Group profiles
+
+# Run only after registering group.com.TEAMID.LoopFollow in Apple Developer
+# AND assigning that group to BOTH LoopFollow App IDs.
+# This NEVER runs match nuke and NEVER revokes distribution certificates.
+on:
+  workflow_dispatch:
+    inputs:
+      apple_group_assigned:
+        description: "Confirm App Group is linked to both LoopFollow App IDs in Apple Developer"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: loopfollow-profile-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: ${{ inputs.apple_group_assigned == true }}
+    name: Renew ONLY LoopFollow provisioning profiles
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      TEAMID: ${{ secrets.TEAMID }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+      FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+      FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+      API_KEY_FILE: ${{ runner.temp }}/loopfollow-asc-key.json
+    steps:
+      - name: Check out stable LoopFollow
+        uses: actions/checkout@v5
+
+      - name: Verify required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in TEAMID GH_PAT MATCH_PASSWORD FASTLANE_KEY_ID FASTLANE_ISSUER_ID FASTLANE_KEY; do
+            test -n "${!key:-}" || { echo "::error::Missing organization secret $key"; exit 1; }
+          done
+
+      - name: Install existing project Fastlane dependencies
+        run: bundle install
+
+      - name: Create temporary API key file
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          filepath=os.environ["API_KEY_FILE"]
+          with open(filepath, "w") as f:
+              json.dump({
+                  "key_id":os.environ["FASTLANE_KEY_ID"],
+                  "issuer_id":os.environ["FASTLANE_ISSUER_ID"],
+                  "key":os.environ["FASTLANE_KEY"],
+                  "in_house":False
+              },f)
+          os.chmod(filepath,0o600)
+          PY
+
+      - name: Renew only the two LoopFollow App Store profiles
+        shell: bash
+        run: |
+          set -euo pipefail
+          IDS="com.${TEAMID}.LoopFollow,com.${TEAMID}.LoopFollow.LoopFollowLAExtension"
+          BASIC_AUTH="$(printf '%s:%s' "$GITHUB_REPOSITORY_OWNER" "$GH_PAT" | base64 | tr -d '\n')"
+          bundle exec fastlane match appstore \
+            --force \
+            --app_identifier "$IDS" \
+            --api_key_path "$API_KEY_FILE" \
+            --git_basic_authorization "$BASIC_AUTH" \
+            --renew_expired_certs false
+          echo "Regenerated profiles only for $IDS"
+
+      - name: Verify both signed profiles contain the expected App Group
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, plistlib, subprocess
+          from pathlib import Path
+
+          team=os.environ["TEAMID"]
+          group=f"group.com.{team}.LoopFollow"
+          identifiers={
+              f"com.{team}.LoopFollow",
+              f"com.{team}.LoopFollow.LoopFollowLAExtension"
+          }
+          directories=[
+              Path.home()/"Library/Developer/Xcode/UserData/Provisioning Profiles",
+              Path.home()/"Library/MobileDevice/Provisioning Profiles"
+          ]
+          matched=set()
+          for directory in directories:
+              if not directory.exists():
+                  continue
+              for path in directory.glob("*.mobileprovision"):
+                  try:
+                      data=subprocess.run(
+                          ["security","cms","-D","-i",str(path)],
+                          check=True,capture_output=True
+                      ).stdout
+                      profile=plistlib.loads(data)
+                  except (subprocess.CalledProcessError,ValueError):
+                      continue
+                  entitlements=profile.get("Entitlements",{})
+                  identifier=entitlements.get("application-identifier","")
+                  app_id=identifier.split(".",1)[1] if "." in identifier else identifier
+                  if app_id not in identifiers:
+                      continue
+                  groups=entitlements.get("com.apple.security.application-groups",[])
+                  if group not in groups:
+                      raise SystemExit(f"App Group missing from profile for {app_id}: {group}")
+                  matched.add(app_id)
+          missing=identifiers-matched
+          if missing:
+              raise SystemExit("Missing regenerated provisioning profile(s) for: "+", ".join(sorted(missing)))
+          print("Both LoopFollow provisioning profiles contain the App Group. No other app profiles touched.")
+          PY
+
+      - name: Delete temporary API key
+        if: always()
+        shell: bash
+        run: rm -f "$API_KEY_FILE"
+
+      - name: Next step
+        if: success()
+        run: |
+          echo "### LoopFollow profile repair complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "Both LoopFollow profiles now contain the expected App Group." >> "$GITHUB_STEP_SUMMARY"
+          echo "Run the existing **4. Build LoopFollow** workflow on main. No certificate nuke was performed." >> "$GITHUB_STEP_SUMMARY"
