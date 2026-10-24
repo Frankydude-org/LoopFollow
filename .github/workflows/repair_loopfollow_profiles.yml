@@ -4,9 +4,6 @@ name: Repair LoopFollow App Group profiles
 # AND assigning that group to BOTH LoopFollow App IDs.
 # This NEVER runs match nuke and NEVER revokes distribution certificates.
 on:
-  push:
-    paths:
-      - ".github/workflows/repair_loopfollow_profiles.yml"
   workflow_dispatch:
     inputs:
       apple_group_assigned:
@@ -24,7 +21,7 @@ concurrency:
 
 jobs:
   repair:
-    if: ${{ (github.event_name == 'push' && github.event.head_commit.message == 'repair-loopfollow-profile-refresh') || (github.event_name == 'workflow_dispatch' && inputs.apple_group_assigned == true) }}
+    if: ${{ inputs.apple_group_assigned == true }}
     name: Renew ONLY LoopFollow provisioning profiles
     runs-on: macos-15
     timeout-minutes: 45
