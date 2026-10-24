@@ -1,7 +1,8 @@
 name: 0. Preflight LoopFollow secrets
 
-# One-time preflight on creation, and manually runnable afterward.
-# Calls the upstream validator; does not create Apple app identifiers or builds.
+# This independent preflight supplements the upstream validator. The upstream
+# validate_secrets job can report success when Fastlane fails to load gems.
+# This job MUST fail if Fastlane or Match-Secrets authentication is broken.
 on:
   push:
     branches: [main]
@@ -14,6 +15,43 @@ permissions:
 
 jobs:
   validate:
-    name: Validate existing organization secrets and Match-Secrets access
+    name: Validate GitHub token and formats (upstream)
     uses: ./.github/workflows/validate_secrets.yml
     secrets: inherit
+
+  strict-fastlane:
+    name: Verify Fastlane, Apple key and Match-Secrets
+    needs: validate
+    runs-on: macos-15
+    timeout-minutes: 25
+    env:
+      TEAMID: ${{ secrets.TEAMID }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+      FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+      FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Ensure all six secrets are accessible
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in TEAMID GH_PAT MATCH_PASSWORD FASTLANE_ISSUER_ID FASTLANE_KEY_ID FASTLANE_KEY; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing secret $name. Check organization secret access for this fork."
+              exit 1
+            fi
+          done
+          echo "All six required secrets are present."
+
+      - name: Install locked Fastlane dependencies
+        run: bundle install
+
+      - name: Validate real Fastlane/Match access (fail on any error)
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle exec fastlane validate_secrets
