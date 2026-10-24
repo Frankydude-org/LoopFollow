@@ -104,3 +104,31 @@ Configurer l'URL T1Pal/Nightscout et un accès de lecture seule uniquement **sur
 - La revue bêta Apple des testeurs externes n'est pas exigée pour le groupe interne, mais un traitement Apple de chaque build peut prendre un délai et des exigences techniques ou de conformité peuvent s'appliquer.
 - Ne pas configurer Julie comme **Admin**.
 - Les alertes LoopFollow (glycémie basse, etc.) peuvent être retardées par iOS, la transmission Trio/Nightscout ou l'absence de réseau; ne pas les utiliser comme seul dispositif de sécurité.
+
+
+## Correction de l'échec initial du 24 octobre 2026 : App Group manquant
+
+Échec du build GitHub : https://github.com/Frankydude-org/LoopFollow/actions/runs/40126355387
+
+Message Xcode pour les deux cibles : le profil de provisionnement ne prend pas en charge `group.com.JZ282977XP.LoopFollow`. La documentation officielle LoopFollow explique cette étape supplémentaire depuis l'ajout de Live Activities : https://loopfollowdocs.org/build/lf-browser-build/#create-app-group
+
+### À faire une fois dans le portail Apple Developer
+
+1. Ouvrir https://developer.apple.com/account/resources/identifiers/applicationGroup/add/
+2. Créer un App Group nommé **LoopFollow App Group** avec l'identifiant exact `group.com.JZ282977XP.LoopFollow`. S'il existe déjà, passer directement aux associations.
+3. Ouvrir https://developer.apple.com/account/resources/identifiers/list
+4. Sélectionner `LoopFollow` (`com.JZ282977XP.LoopFollow`) ; sous **App Groups**, cliquer `Configure` ou `Edit` ; cocher **LoopFollow App Group** ; Continue → Save → Confirm.
+5. Répéter pour `LoopFollow Live Activity Extension` (`com.JZ282977XP.LoopFollow.LoopFollowLAExtension`).
+6. Ne pas toucher aux identifiants, certificats ni groupes de Trio / Loop.
+
+### À exécuter après les deux associations
+
+Le workflow GitHub distinct `.github/workflows/repair_loopfollow_profiles.yml` régénère **uniquement les deux profils de provisionnement LoopFollow**, avec `fastlane match appstore --force` ciblé sur les deux Bundle IDs.
+
+- Lancer le workflow **Repair LoopFollow App Group profiles** avec `apple_group_assigned=true`.
+- Il valide le contenu des nouveaux profils et échoue explicitement si le groupe manque.
+- Il ne lance jamais `match nuke` et ne révoque pas les certificats de distribution partagés.
+- Après son succès, exécuter le workflow officiel `4. Build LoopFollow` sur `main`.
+- Vérifier ensuite l'apparition du build dans TestFlight.
+
+Le workflow de correction attend volontairement l'association manuelle dans Apple Developer. La possibilité de lancer un workflow GitHub ne suffit pas à créer ou rattacher le groupe Apple.
