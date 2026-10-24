@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   repair:
-    if: ${{ (github.event_name == 'push' && github.event.head_commit.message == 'chore(loopfollow): trigger targeted profile repair') || (github.event_name == 'workflow_dispatch' && inputs.apple_group_assigned == true) }}
+    if: ${{ (github.event_name == 'push' && github.event.head_commit.message == 'repair-loopfollow-profile-refresh') || (github.event_name == 'workflow_dispatch' && inputs.apple_group_assigned == true) }}
     name: Renew ONLY LoopFollow provisioning profiles
     runs-on: macos-15
     timeout-minutes: 45
