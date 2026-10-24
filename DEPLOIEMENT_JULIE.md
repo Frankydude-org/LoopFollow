@@ -1,56 +1,106 @@
-# LoopFollow – déploiement et suivi TestFlight pour Julie
+# Déploiement LoopFollow sur l'iPhone de Julie — TestFlight interne
 
-Dépôt : https://github.com/Frankydude-org/LoopFollow
-Source officielle (stable) : https://github.com/loopandlearn/LoopFollow, branche `main`.
+## Objectif
 
-## Architecture et cadence
+Julie doit pouvoir utiliser **LoopFollow** et recevoir les nouvelles versions automatiquement, sans devenir développeuse d'applications ni faire approuver chaque version par la revue bêta externe Apple.
 
-- Le workflow officiel `4. Build LoopFollow` (`.github/workflows/build_LoopFollow.yml`) est conservé sans modification.
-- Cron officiel : `17 10 * * 0` (dimanche à 10 h 17 UTC). Chaque dimanche, tentative de synchronisation de `main` sur la version stable amont ; build si des commits sont nouveaux.
-- Le deuxième dimanche de chaque mois, build même sans changement, pour maintenir les builds TestFlight avant leur expiration à 90 jours.
-- Laisser `SCHEDULED_SYNC` et `SCHEDULED_BUILD` non définies (ou `true`).
-- Ne pas suivre la branche `dev` pour l'iPhone de Julie. Ne pas personnaliser le workflow officiel pour faciliter la synchronisation du fork.
+**Choix validé le 24 octobre 2026 : distribution TestFlight INTERNE.**
+Ne pas utiliser un groupe de testeurs externes pour Julie.
 
-## Secrets / variables nécessaires
+- GitHub : https://github.com/Frankydude-org/LoopFollow (`main`)
+- Source officielle : https://github.com/loopandlearn/LoopFollow (`main`)
+- App Store Connect : https://appstoreconnect.apple.com/apps
+- Documentation Apple officielle : https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers
 
-Réutiliser au niveau de l'organisation les secrets déjà employés par Trio / Loop, en vérifiant leur disponibilité POUR CE NOUVEAU DÉPÔT :
+## Automatisation existante
 
+Le workflow officiel `.github/workflows/build_LoopFollow.yml`, nommé **4. Build LoopFollow**, est conservé tel quel :
+
+- Exécution programmée chaque dimanche à 10:17 UTC (`17 10 * * 0`) ;
+- synchronisation du fork avec `loopandlearn/LoopFollow:main` ;
+- nouvelle compilation lorsqu'une modification existe ;
+- compilation supplémentaire le deuxième dimanche du mois, même sans modification, pour renouveler une version TestFlight avant l'expiration de 90 jours ;
+- transmission à App Store Connect par Fastlane.
+
+Laisser `SCHEDULED_BUILD` et `SCHEDULED_SYNC` absentes, ou sur `true`. Ne pas suivre `dev` pour le téléphone de Julie.
+
+**Distribution interne automatique :** elle se configure entièrement dans App Store Connect, via **TestFlight → Internal Testing → groupe Julie → Enable automatic distribution**. Apple rend les builds traités disponibles automatiquement aux membres du groupe. Aucun workflow GitHub additionnel pour distribution externe n'est requis.
+
+Le workflow externe précédemment préparé a été **retiré** pour éviter une distribution erronée ou une soumission involontaire à la Beta App Review.
+
+## Vérification des secrets : complétée
+
+Workflow `.github/workflows/verify_fork.yml` : validation renforcée réussie le 24 octobre 2026.
+
+Exécution : https://github.com/Frankydude-org/LoopFollow/actions/runs/40117959936
+
+Les six secrets d'organisation suivants ont été accessibles depuis LoopFollow :
 `TEAMID`, `FASTLANE_ISSUER_ID`, `FASTLANE_KEY_ID`, `FASTLANE_KEY`, `GH_PAT`, `MATCH_PASSWORD`.
 
-**Important :** les secrets d'organisation peuvent être restreints à certains dépôts. Un nouveau fork ne reçoit pas forcément accès aux secrets existants. Les valeurs des secrets ne sont pas lisibles via l'API GitHub (conception normale). Ne jamais coller leurs valeurs dans un ticket, un chat ou un fichier du dépôt.
+Fastlane s'est exécuté correctement, et le dépôt privé `Frankydude-org/Match-Secrets` a été déchiffré. Aucun besoin identifié de régénérer les secrets.
 
-- `GH_PAT` : vérifier l'accès privé à `Frankydude-org/Match-Secrets` ainsi que les autorisations `repo` et `workflow` adaptées au PAT.
-- `ENABLE_NUKE_CERTS` : facultatif pour un build avec certificat valide ; si activé, le renouvellement peut révoquer des certificats de distribution partagés par d'autres applications. Vérifier l'impact sur Trio / Loop avant de l'activer ou de le modifier. **Aucune modification automatique de cette variable n'est effectuée ici.**
-- `TESTFLIGHT_EXTERNAL_GROUP` : variable de dépôt, à créer **après** la configuration Apple, avec exactement le nom du groupe de testeurs externes (ex. `Julie`). Si elle est absente, la distribution externe est ignorée sans bloquer le workflow officiel.
+Ne pas modifier `ENABLE_NUKE_CERTS` ou forcer le renouvellement des certificats sans contrôler les impacts sur Trio et Loop, qui partagent la signature.
 
-## Actions manuelles, dans l'ordre
+## Procédure initiale, dans l'ordre
 
-1. Dans GitHub, ouvrir [Actions](https://github.com/Frankydude-org/LoopFollow/actions). Si GitHub demande d'activer les workflows du fork, autoriser explicitement l'exécution.
-2. Ouvrir [Actions → 1. Validate Secrets](https://github.com/Frankydude-org/LoopFollow/actions/workflows/validate_secrets.yml), lancer `Run workflow` sur `main`. Cela valide les secrets / l'accès à `Match-Secrets`. Résoudre toute erreur AVANT d'aller plus loin.
-3. **À la prochaine étape avec Apple seulement** : lancer [2. Add Identifiers](https://github.com/Frankydude-org/LoopFollow/actions/workflows/add_identifiers.yml) pour créer `com.TEAMID.LoopFollow` et son extension. Le préfixe TEAMID est substitué par la vraie valeur du secret.
-4. Dans [App Store Connect](https://appstoreconnect.apple.com/apps), créer l'application iOS correspondant à ce Bundle ID, sans publication App Store.
-5. Dans TestFlight, créer un groupe de testeurs **externes**, par exemple `Julie`, et inviter Julie avec l'adresse Apple qu'elle utilise sur l'iPhone. La première distribution externe exige généralement une revue bêta Apple.
-6. Dans [Settings → Secrets and variables → Actions → Variables](https://github.com/Frankydude-org/LoopFollow/settings/variables/actions), ajouter la variable de dépôt `TESTFLIGHT_EXTERNAL_GROUP` avec le nom exact du groupe externe.
-7. Lancer [4. Build LoopFollow](https://github.com/Frankydude-org/LoopFollow/actions/workflows/build_LoopFollow.yml) manuellement sur `main`. Après un build réussi et son transfert vers App Store Connect, le workflow local `5. Distribute LoopFollow to external TestFlight testers` est déclenché, attend le traitement Apple et tente l'affectation au groupe externe. Si Apple n'a pas encore approuvé la version, il faut finaliser la revue avant la distribution ; la distribution peut être relancée manuellement.
-8. Sur l'iPhone de Julie, installer TestFlight, accepter l'invitation puis installer LoopFollow. Dans TestFlight → LoopFollow → `Automatic Updates`, activer les mises à jour automatiques.
+### 1. Créer les identifiants d'application Apple
 
-## Workflow de distribution externe
+Depuis https://github.com/Frankydude-org/LoopFollow/actions/workflows/add_identifiers.yml :
 
-Fichier local : `.github/workflows/distribute_external_testflight.yml`.
+- Choisir `Run workflow` → `main` ;
+- vérifier la conclusion `Success` ;
+- ce workflow crée les identifiants `com.<TEAMID>.LoopFollow` et `com.<TEAMID>.LoopFollow.LoopFollowLAExtension` avec les capacités requises ;
+- remplacer `<TEAMID>` par la vraie valeur de l'Apple Developer Team ID (secret, consultable dans le portail Apple). Ne pas partager de clé privée.
 
-- Écoute uniquement la **réussite** du workflow officiel `4. Build LoopFollow`, plus le déclenchement manuel.
-- Ne fonctionne que si `TESTFLIGHT_EXTERNAL_GROUP` est défini.
-- Distribue la dernière compilation déjà téléversée via `fastlane pilot distribute`, sans reconstruire l'IPA et sans toucher aux certificats `Match`.
-- Utilise temporairement les secrets App Store Connect existants; supprime le fichier d'authentification à la fin.
-- Peut échouer si le build n'est pas encore admissible à la distribution externe, si l'approbation Apple manque, ou si la clé App Store Connect n'a pas les droits nécessaires. Une exécution réussie doit être confirmée dans App Store Connect.
+### 2. Créer l'application dans App Store Connect
 
-## Sécurité et fiabilité
+Dans https://appstoreconnect.apple.com/apps → `+` → `New App` :
+- Plateforme iOS ;
+- nom disponible (nom administratif; l'icône installée utilisera le nom LoopFollow défini dans le projet) ;
+- langue et SKU librement choisis ;
+- choisir le Bundle ID créé à l'étape 1 ;
+- créer l'enregistrement, mais **ne pas soumettre l'application à l'App Store**.
 
-Les alertes LoopFollow et le suivi de glycémie nécessitent une connexion Internet et peuvent être retardés par les limites iOS. Ne pas utiliser cet affichage comme seule méthode de surveillance des hypoglycémies. Ne pas enregistrer l'URL privée Nightscout, les jetons, les données glycémiques ou l'adresse courriel de Julie dans ce dépôt GitHub public.
+### 3. Ajouter Julie comme utilisatrice App Store Connect
 
-## Limites de la configuration
+Dans https://appstoreconnect.apple.com/access/users → `+` :
+- inviter Julie à son adresse courriel habituelle ;
+- rôle **Marketing** (éligible aux tests internes, permissions moindres que Developer/Admin) ;
+- limiter son accès **uniquement à LoopFollow** ;
+- ne pas donner d'accès `Certificates, Identifiers & Profiles`, ni accès aux rapports ;
+- Julie accepte son invitation (Apple l'indique comme expirant après 3 jours).
 
-- Le fork existe, les workflows d'origine sont conservés, et le mécanisme de distribution externe optionnel est installé.
-- Les secrets ne peuvent pas être lus directement ; leur validité doit être démontrée par l'exécution du workflow officiel `1. Validate Secrets`.
-- La création de l'application Apple, du groupe externe et l'activation de la variable TestFlight sont **volontairement différées**.
-- Les builds GitHub et les mises à jour iOS ne sont pas instantanés ni garantis ; la disponibilité dépend de GitHub Actions, d'Apple et des réglages de TestFlight sur l'iPhone.
+Note : **Admin n'est pas nécessaire** et ne permet pas de limiter son accès aux autres applications.
+
+### 4. Créer son groupe de test interne
+
+Dans `Apps → LoopFollow → TestFlight → Internal Testing → +` :
+- Groupe : **Julie** ;
+- cocher **Enable automatic distribution** ;
+- cliquer sur Create ;
+- `Invite Testers` → choisir Julie (utilisatrice App Store Connect) ;
+- Apple peut limiter le nombre à 100 testeurs internes par application, sans révision bêta externe.
+
+### 5. Premier build GitHub
+
+Dans https://github.com/Frankydude-org/LoopFollow/actions/workflows/build_LoopFollow.yml :
+- Lancer **4. Build LoopFollow** manuellement sur `main` ;
+- vérifier l'exécution complète et le téléversement TestFlight ;
+- attendre le traitement par Apple ; confirmer la disponibilité du build dans le groupe interne Julie.
+
+### 6. Installation et mises à jour sur l'iPhone de Julie
+
+- Installer TestFlight depuis l'App Store, accepter l'invitation reçue, installer LoopFollow ;
+- dans TestFlight, ouvrir LoopFollow et activer **Automatic Updates** ;
+- pour l'avenir, le workflow GitHub génère les builds et le groupe interne les reçoit automatiquement après traitement Apple. L'installation automatique dépend des réglages TestFlight/iOS et n'est pas instantanée.
+
+### 7. Configuration Nightscout
+
+Configurer l'URL T1Pal/Nightscout et un accès de lecture seule uniquement **sur l'iPhone de Julie**. Éviter de mettre les jetons, données médicales ou identifiants Nightscout dans un dépôt GitHub public.
+
+## Limites et prudence
+
+- Les builds TestFlight expirent après 90 jours; renouvellement mensuel programmé.
+- La revue bêta Apple des testeurs externes n'est pas exigée pour le groupe interne, mais un traitement Apple de chaque build peut prendre un délai et des exigences techniques ou de conformité peuvent s'appliquer.
+- Ne pas configurer Julie comme **Admin**.
+- Les alertes LoopFollow (glycémie basse, etc.) peuvent être retardées par iOS, la transmission Trio/Nightscout ou l'absence de réseau; ne pas les utiliser comme seul dispositif de sécurité.
