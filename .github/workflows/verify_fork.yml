@@ -1,0 +1,19 @@
+name: 0. Preflight LoopFollow secrets
+
+# One-time preflight on creation, and manually runnable afterward.
+# Calls the upstream validator; does not create Apple app identifiers or builds.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/verify_fork.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate existing organization secrets and Match-Secrets access
+    uses: ./.github/workflows/validate_secrets.yml
+    secrets: inherit
