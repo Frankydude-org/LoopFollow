@@ -2,6 +2,10 @@ name: 2. Add Identifiers
 run-name: Add Identifiers (${{ github.ref_name }})
 on:
   workflow_dispatch:
+  # Temporary one-time trigger to configure LoopFollow 8 Watch identifiers.
+  push:
+    paths:
+      - '.github/workflows/add_identifiers.yml'
 
 jobs:
   validate:
